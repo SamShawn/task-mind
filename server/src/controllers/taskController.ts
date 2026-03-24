@@ -1,11 +1,15 @@
 import { Request, Response } from 'express';
 import Task from '../models/Task';
-import User from '../models/User';
 import AIClassifier from '../services/aiClassifier';
+
+// Extend Request type to include userId
+interface AuthenticatedRequest extends Request {
+  userId: string;
+}
 
 export const createTask = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
+    const userId = (req as AuthenticatedRequest).userId;
     const { title, description, dueDate, tags, estimatedHours, assignedTo } = req.body;
 
     if (!title || !description) {
@@ -66,7 +70,16 @@ export const getTasks = async (req: Request, res: Response) => {
       limit = 20
     } = req.query;
 
-    const query: any = {};
+    // Build query object with proper types
+    type TaskQuery = {
+      status?: string;
+      priority?: string;
+      category?: string;
+      assignedTo?: string;
+      createdBy?: string;
+      $or?: Array<Record<string, any>>;
+    };
+    const query: TaskQuery = {};
 
     if (status) query.status = status;
     if (priority) query.priority = priority;
@@ -75,14 +88,15 @@ export const getTasks = async (req: Request, res: Response) => {
     if (createdBy) query.createdBy = createdBy;
 
     if (search) {
+      const escapedSearch = (search as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { tags: { $in: [new RegExp(search as string, 'i')] } }
+        { title: { $regex: escapedSearch, $options: 'i' } },
+        { description: { $regex: escapedSearch, $options: 'i' } },
+        { tags: { $in: [new RegExp(escapedSearch, 'i')] } }
       ];
     }
 
-    const sortOptions: any = {};
+    const sortOptions: Record<string, 1 | -1> = {};
     sortOptions[sortBy as string] = sortOrder === 'asc' ? 1 : -1;
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
@@ -148,7 +162,7 @@ export const getTask = async (req: Request, res: Response) => {
 
 export const updateTask = async (req: Request, res: Response) => {
   try {
-    const { id } } = req.params;
+    const { id } = req.params;
     const updates = req.body;
 
     const task = await Task.findById(id);
@@ -176,7 +190,7 @@ export const updateTask = async (req: Request, res: Response) => {
 
     Object.keys(updates).forEach(key => {
       if (updates[key] !== undefined) {
-        (task as any)[key] = updates[key];
+        (task as Record<string, unknown>)[key] = updates[key];
       }
     });
 
@@ -225,7 +239,7 @@ export const deleteTask = async (req: Request, res: Response) => {
 
 export const getTaskStats = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
+    const userId = (req as AuthenticatedRequest).userId;
 
     const [byStatus, byPriority, byCategory] = await Promise.all([
       Task.aggregate([

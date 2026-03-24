@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useTasks, useTaskStats, useAuth } from '../hooks';
+import { useTasks, useTaskStats, useAuth, useTaskAnalysis } from '../hooks';
 import { TaskCard, TaskForm } from '../components';
 import type { Task, TaskStatus, TaskPriority, TaskCategory } from '../types';
 import {
@@ -42,11 +42,11 @@ export const Dashboard = () => {
     return () => clearTimeout(timer);
   }, [showForm, editingTask, analyzeTask]);
 
-  const filteredTasks = tasks.filter(task => {
+  const filteredTasks = tasks.filter((task: Task) => {
     const matchesSearch = searchTerm === '' ||
       task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       task.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      task.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
+      task.tags.some((tag: string) => tag.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
     const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
@@ -151,7 +151,7 @@ export const Dashboard = () => {
               <div>
                 <h4 className="text-xs text-gray-500 mb-2">按状态</h4>
                 <div className="flex flex-wrap gap-2">
-                  {stats.byStatus.map(item => (
+                  {stats.byStatus.map((item: { _id: string; count: number }) => (
                     <span key={item._id} className="text-sm bg-gray-100 px-2 py-1 rounded">
                       {taskStatusLabels[item._id as TaskStatus] || item._id}: {item.count}
                     </span>
@@ -161,7 +161,7 @@ export const Dashboard = () => {
               <div>
                 <h4 className="text-xs text-gray-500 mb-2">按优先级</h4>
                 <div className="flex flex-wrap gap-2">
-                  {stats.byPriority.map(item => (
+                  {stats.byPriority.map((item: { _id: string; count: number }) => (
                     <span key={item._id} className="text-sm bg-gray-100 px-2 py-1 rounded">
                       {taskPriorityLabels[item._id as TaskPriority] || item._id}: {item.count}
                     </span>
@@ -171,7 +171,7 @@ export const Dashboard = () => {
               <div>
                 <h4 className="text-xs text-gray-500 mb-2">按分类</h4>
                 <div className="flex flex-wrap gap-2">
-                  {stats.byCategory.map(item => (
+                  {stats.byCategory.map((item: { _id: string; count: number }) => (
                     <span key={item._id} className="text-sm bg-gray-100 px-2 py-1 rounded">
                       {taskCategoryLabels[item._id as TaskCategory] || item._id}: {item.count}
                     </span>
@@ -306,7 +306,7 @@ export const Dashboard = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredTasks.map(task => (
+            {filteredTasks.map((task: Task) => (
               <TaskCard
                 key={task._id}
                 task={task}

@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react';
-import type { Task, TaskStatus, TaskPriority, TaskCategory, AIAnalysisResult } from '../types';
+import { useState } from 'react';
+import type { Task, TaskStatus, AIAnalysisResult } from '../types';
 import {
   taskStatusLabels,
   taskPriorityLabels,
   taskCategoryLabels,
-  taskStatusColors,
   taskPriorityColors,
   taskCategoryColors
 } from '../utils/formatters';
@@ -42,7 +41,7 @@ export const TaskForm = ({ task, onSubmit, onCancel, aiAnalysis, isAnalyzing }: 
     const data = {
       ...formData,
       tags: formData.tags.split(',').map(t => t.trim()).filter(Boolean),
-      estimatedHours: formData.estimatedHours ? parseInt(formData.estimatedHours) : undefined
+      estimatedHours: formData.estimatedHours ? parseInt(formData.estimatedHours.toString()) : undefined
     };
 
     if (!formData.priority && aiAnalysis) {

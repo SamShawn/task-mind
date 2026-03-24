@@ -19,7 +19,8 @@ interface PriorityKeywords {
 export class AIClassifier {
   private static categoryKeywords: ClassificationKeywords = {
     development: [
-    },
+      '开发', '编程', '代码', '功能', 'bug', '修复'
+    ],
     design: [
       '设计', 'ui', 'ux', '界面', '原型', 'figma', 'sketch',
       'design', 'ui/ux', 'interface', 'prototype', 'mockup',
