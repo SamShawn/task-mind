@@ -57,12 +57,12 @@ export const createTask = async (req: Request, res: Response) => {
 
 export const getTasks = async (req: Request, res: Response) => {
   try {
+    const userId = (req as AuthenticatedRequest).userId;
     const {
       status,
       priority,
       category,
       assignedTo,
-      createdBy,
       search,
       sortBy = 'createdAt',
       sortOrder = 'desc',
@@ -76,16 +76,16 @@ export const getTasks = async (req: Request, res: Response) => {
       priority?: string;
       category?: string;
       assignedTo?: string;
-      createdBy?: string;
+      createdBy: string;
       $or?: Array<Record<string, any>>;
     };
-    const query: TaskQuery = {};
+    // 只能查看自己创建的任务
+    const query: TaskQuery = { createdBy: userId };
 
     if (status) query.status = status;
     if (priority) query.priority = priority;
     if (category) query.category = category;
     if (assignedTo) query.assignedTo = assignedTo;
-    if (createdBy) query.createdBy = createdBy;
 
     if (search) {
       const escapedSearch = (search as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -134,6 +134,7 @@ export const getTasks = async (req: Request, res: Response) => {
 
 export const getTask = async (req: Request, res: Response) => {
   try {
+    const userId = (req as AuthenticatedRequest).userId;
     const { id } = req.params;
 
     const task = await Task.findById(id)
@@ -144,6 +145,14 @@ export const getTask = async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         message: '任务不存在'
+      });
+    }
+
+    // 检查任务是否属于当前用户
+    if (task.createdBy.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: '无权访问此任务'
       });
     }
 
@@ -162,6 +171,7 @@ export const getTask = async (req: Request, res: Response) => {
 
 export const updateTask = async (req: Request, res: Response) => {
   try {
+    const userId = (req as AuthenticatedRequest).userId;
     const { id } = req.params;
     const updates = req.body;
 
@@ -170,6 +180,14 @@ export const updateTask = async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         message: '任务不存在'
+      });
+    }
+
+    // 检查任务是否属于当前用户
+    if (task.createdBy.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: '无权修改此任务'
       });
     }
 
@@ -214,15 +232,26 @@ export const updateTask = async (req: Request, res: Response) => {
 
 export const deleteTask = async (req: Request, res: Response) => {
   try {
+    const userId = (req as AuthenticatedRequest).userId;
     const { id } = req.params;
 
-    const task = await Task.findByIdAndDelete(id);
+    const task = await Task.findById(id);
     if (!task) {
       return res.status(404).json({
         success: false,
         message: '任务不存在'
       });
     }
+
+    // 检查任务是否属于当前用户
+    if (task.createdBy.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: '无权删除此任务'
+      });
+    }
+
+    await task.deleteOne();
 
     res.json({
       success: true,
