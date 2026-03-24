@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTasks, useTaskStats, useAuth, useTaskAnalysis } from '../hooks';
 import { TaskCard, TaskForm } from '../components';
 import type { Task, TaskStatus, TaskPriority, TaskCategory, AIAnalysisResult } from '../types';
@@ -10,6 +11,7 @@ import {
 import { Plus, Search, Filter, BarChart3, LogOut, RefreshCw, Loader2, AlertCircle } from 'lucide-react';
 
 export const Dashboard = () => {
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { tasks, loading, error, refetch, createTask, updateTask, deleteTask } = useTasks();
   const { stats, refetch: refetchStats } = useTaskStats();
@@ -23,6 +25,8 @@ export const Dashboard = () => {
   const [filterCategory, setFilterCategory] = useState<TaskCategory | 'all'>('all');
   const [showStats, setShowStats] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // AI分析结果
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
@@ -156,10 +160,29 @@ export const Dashboard = () => {
     setShowStats(prev => !prev);
   }, []);
 
-  // Handle logout
-  const handleLogout = useCallback(() => {
-    logout();
-  }, [logout]);
+  // Show logout confirmation
+  const showLogoutDialog = useCallback(() => {
+    setShowLogoutConfirm(true);
+  }, []);
+
+  // Cancel logout
+  const cancelLogout = useCallback(() => {
+    setShowLogoutConfirm(false);
+  }, []);
+
+  // Confirm logout
+  const confirmLogout = useCallback(async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('退出失败:', error);
+    } finally {
+      setShowLogoutConfirm(false);
+      setIsLoggingOut(false);
+    }
+  }, [logout, navigate]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -194,8 +217,8 @@ export const Dashboard = () => {
                 <RefreshCw className="h-5 w-5" />
               </button>
               <button
-                onClick={handleLogout}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+                onClick={showLogoutDialog}
+                className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                 title="退出"
               >
                 <LogOut className="h-5 w-5" />
@@ -308,6 +331,54 @@ export const Dashboard = () => {
             </button>
           </div>
         </div>
+
+        {/* Logout Confirmation Modal */}
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                  <LogOut className="h-6 w-6 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">确认退出</h3>
+                  <p className="text-sm text-gray-600">确定要退出当前账户吗？</p>
+                </div>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-amber-800">
+                  ⚠️ 退出后您需要重新登录才能访问任务管理功能
+                </p>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={cancelLogout}
+                  disabled={isLoggingOut}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={confirmLogout}
+                  disabled={isLoggingOut}
+                  className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoggingOut ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      退出中...
+                    </>
+                  ) : (
+                    <>
+                      <LogOut className="h-4 w-4" />
+                      确认退出
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Task Form Modal */}
         {showForm && (

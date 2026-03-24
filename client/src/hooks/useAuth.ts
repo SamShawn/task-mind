@@ -40,10 +40,19 @@ export const useAuth = () => {
     return response;
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
+  const logout = async () => {
+    try {
+      // 调用服务器端退出API
+      await authAPI.logout();
+    } catch (error) {
+      // 即使服务器端退出失败，仍然清除本地状态
+      console.warn('服务器端退出失败，但已清除本地状态:', error);
+    } finally {
+      // 总是清除本地状态
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      setUser(null);
+    }
   };
 
   return { user, loading, login, register, logout };

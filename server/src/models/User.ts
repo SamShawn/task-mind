@@ -15,6 +15,7 @@ interface IUserDocument extends Document {
   department?: string;
   createdAt: Date;
   updatedAt: Date;
+  lastLogout?: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 

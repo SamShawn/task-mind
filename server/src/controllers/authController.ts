@@ -131,8 +131,9 @@ export const getMe = async (req: Request, res: Response) => {
   }
 };
 
-export const getUsers = async (req: Request, res: Response) => {
+export const getUsers = async (_req: Request, res: Response) => {
   try {
+    void _req; // Prevent unused variable warning
     const users = await User.find().sort({ name: 1 });
 
     res.json({
@@ -144,6 +145,35 @@ export const getUsers = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: '获取用户列表失败'
+    });
+  }
+};
+
+export const logout = async (req: Request, res: Response) => {
+  try {
+    // 在实际应用中，这里可能会：
+    // 1. 将JWT添加到黑名单（如果使用Redis等）
+    // 2. 更新用户的最后登出时间
+    // 3. 清除服务器端的会话数据
+
+    const userId = (req as any).userId;
+    if (userId) {
+      // 记录用户登出时间
+      await User.findByIdAndUpdate(userId, {
+        lastLogout: new Date()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: '退出成功'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    // 即使服务器端出错，客户端仍然可以清除本地token
+    res.status(500).json({
+      success: false,
+      message: '退出失败，但已清除本地登录信息'
     });
   }
 };
