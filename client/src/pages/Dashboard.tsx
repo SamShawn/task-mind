@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTasks, useTaskStats, useAuth, useTaskAnalysis } from '../hooks';
 import { TaskCard, TaskForm } from '../components';
-import type { Task, TaskStatus, TaskPriority, TaskCategory } from '../types';
+import type { Task, TaskStatus, TaskPriority, TaskCategory, AIAnalysisResult } from '../types';
 import {
   taskStatusLabels,
   taskPriorityLabels,
   taskCategoryLabels
 } from '../utils/formatters';
-import { Plus, Search, Filter, BarChart3, LogOut, RefreshCw, Loader2 } from 'lucide-react';
+import { Plus, Search, Filter, BarChart3, LogOut, RefreshCw, Loader2, AlertCircle } from 'lucide-react';
 
 export const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -22,81 +22,144 @@ export const Dashboard = () => {
   const [filterPriority, setFilterPriority] = useState<TaskPriority | 'all'>('all');
   const [filterCategory, setFilterCategory] = useState<TaskCategory | 'all'>('all');
   const [showStats, setShowStats] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // AI分析结果
-  const [aiAnalysis, setAiAnalysis] = useState<any>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
 
-  // 实时分析任务
+  // 用于防抖的ref
+  const analysisTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const analyzeTaskRef = useRef(analyzeTask);
+  analyzeTaskRef.current = analyzeTask;
+
+  // 实时分析任务（使用防抖）
   useEffect(() => {
-    const timer = setTimeout(async () => {
+    if (analysisTimerRef.current) {
+      clearTimeout(analysisTimerRef.current);
+    }
+
+    analysisTimerRef.current = setTimeout(async () => {
       if (showForm && !editingTask) {
-        const title = (document.querySelector('input[name="title"]') as HTMLInputElement)?.value || '';
-        const description = (document.querySelector('textarea[name="description"]') as HTMLTextAreaElement)?.value || '';
-        if (title || description) {
-          const analysis = await analyzeTask(title, description);
-          setAiAnalysis(analysis);
+        const titleInput = document.querySelector('input[name="title"]') as HTMLInputElement;
+        const descInput = document.querySelector('textarea[name="description"]') as HTMLTextAreaElement;
+        const title = titleInput?.value || '';
+        const description = descInput?.value || '';
+
+        if (title.length >= 3 || description.length >= 10) {
+          try {
+            const analysis = await analyzeTaskRef.current(title, description);
+            setAiAnalysis(analysis);
+          } catch (err) {
+            // 静默失败，不影响用户体验
+            console.warn('AI分析失败:', err);
+          }
         }
       }
-    }, 1000);
+    }, 800);
 
-    return () => clearTimeout(timer);
-  }, [showForm, editingTask, analyzeTask]);
+    return () => {
+      if (analysisTimerRef.current) {
+        clearTimeout(analysisTimerRef.current);
+      }
+    };
+  }, [showForm, editingTask]);
 
-  const filteredTasks = tasks.filter((task: Task) => {
-    const matchesSearch = searchTerm === '' ||
-      task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      task.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      task.tags.some((tag: string) => tag.toLowerCase().includes(searchTerm.toLowerCase()));
+  // Memoize filtered tasks to avoid recalculation on every render
+  const filteredTasks = useMemo(() => {
+    const searchLower = searchTerm.toLowerCase();
+    return tasks.filter((task: Task) => {
+      const matchesSearch = !searchTerm ||
+        task.title.toLowerCase().includes(searchLower) ||
+        task.description.toLowerCase().includes(searchLower) ||
+        task.tags.some((tag: string) => tag.toLowerCase().includes(searchLower));
 
-    const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
-    const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
-    const matchesCategory = filterCategory === 'all' || task.category === filterCategory;
+      const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
+      const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
+      const matchesCategory = filterCategory === 'all' || task.category === filterCategory;
 
-    return matchesSearch && matchesStatus && matchesPriority && matchesCategory;
-  });
+      return matchesSearch && matchesStatus && matchesPriority && matchesCategory;
+    });
+  }, [tasks, searchTerm, filterStatus, filterPriority, filterCategory]);
 
-  const handleCreate = async (data: any) => {
+  // Close modal with memoized callback
+  const closeForm = useCallback(() => {
+    setShowForm(false);
+    setEditingTask(undefined);
+    setAiAnalysis(null);
+    setErrorMessage(null);
+  }, []);
+
+  // Show error message with memoized callback
+  const showError = useCallback((message: string) => {
+    setErrorMessage(message);
+    setTimeout(() => setErrorMessage(null), 5000);
+  }, []);
+
+  // Handle task creation
+  const handleCreate = useCallback(async (data: any) => {
     try {
       await createTask(data);
-      setShowForm(false);
-      setAiAnalysis(null);
+      closeForm();
       refetchStats();
     } catch (err: any) {
-      alert(err.response?.data?.message || '创建任务失败');
+      showError(err.response?.data?.message || '创建任务失败');
     }
-  };
+  }, [createTask, closeForm, refetchStats, showError]);
 
-  const handleUpdate = async (data: any) => {
+  // Handle task update
+  const handleUpdate = useCallback(async (data: any) => {
+    if (!editingTask) return;
+
     try {
-      await updateTask(editingTask!._id, data);
-      setShowForm(false);
-      setEditingTask(undefined);
-      setAiAnalysis(null);
+      await updateTask(editingTask._id, data);
+      closeForm();
       refetchStats();
     } catch (err: any) {
-      alert(err.response?.data?.message || '更新任务失败');
+      showError(err.response?.data?.message || '更新任务失败');
     }
-  };
+  }, [editingTask, updateTask, closeForm, refetchStats, showError]);
 
-  const handleDelete = async (task: Task) => {
-    if (confirm('确定要删除这个任务吗?')) {
+  // Handle task deletion
+  const handleDelete = useCallback(async (task: Task) => {
+    if (window.confirm('确定要删除这个任务吗?')) {
       try {
         await deleteTask(task._id);
         refetchStats();
       } catch (err: any) {
-        alert(err.response?.data?.message || '删除任务失败');
+        showError(err.response?.data?.message || '删除任务失败');
       }
     }
-  };
+  }, [deleteTask, refetchStats, showError]);
 
-  const handleEdit = (task: Task) => {
+  // Handle task edit
+  const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
     setShowForm(true);
-  };
+  }, []);
 
-  const handleLogout = () => {
+  // Open create form
+  const openCreateForm = useCallback(() => {
+    setShowForm(true);
+    setEditingTask(undefined);
+    setAiAnalysis(null);
+    setErrorMessage(null);
+  }, []);
+
+  // Handle refresh
+  const handleRefresh = useCallback(() => {
+    refetch();
+    refetchStats();
+  }, [refetch, refetchStats]);
+
+  // Toggle stats panel
+  const toggleStats = useCallback(() => {
+    setShowStats(prev => !prev);
+  }, []);
+
+  // Handle logout
+  const handleLogout = useCallback(() => {
     logout();
-  };
+  }, [logout]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -117,15 +180,15 @@ export const Dashboard = () => {
                 <span className="text-sm text-gray-700">{user?.name}</span>
               </div>
               <button
-                onClick={() => setShowStats(!showStats)}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+                onClick={toggleStats}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 title="查看统计"
               >
                 <BarChart3 className="h-5 w-5" />
               </button>
               <button
-                onClick={() => { refetch(); refetchStats(); }}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+                onClick={handleRefresh}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 title="刷新"
               >
                 <RefreshCw className="h-5 w-5" />
@@ -237,12 +300,8 @@ export const Dashboard = () => {
             </select>
 
             <button
-              onClick={() => {
-                setShowForm(true);
-                setEditingTask(undefined);
-                setAiAnalysis(null);
-              }}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-purple-700 flex items-center gap-2 text-sm font-medium"
+              onClick={openCreateForm}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-purple-700 flex items-center gap-2 text-sm font-medium transition-all shadow-sm hover:shadow"
             >
               <Plus className="h-4 w-4" />
               新建任务
@@ -260,11 +319,7 @@ export const Dashboard = () => {
               <TaskForm
                 task={editingTask}
                 onSubmit={editingTask ? handleUpdate : handleCreate}
-                onCancel={() => {
-                  setShowForm(false);
-                  setEditingTask(undefined);
-                  setAiAnalysis(null);
-                }}
+                onCancel={closeForm}
                 aiAnalysis={aiAnalysis}
                 isAnalyzing={analyzing}
               />
@@ -273,9 +328,10 @@ export const Dashboard = () => {
         )}
 
         {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 text-red-800 p-4 rounded-lg mb-4">
-            {error}
+        {(error || errorMessage) && (
+          <div className="bg-red-50 text-red-800 p-4 rounded-lg mb-4 flex items-center gap-2 border border-red-200">
+            <AlertCircle className="h-5 w-5 flex-shrink-0" />
+            <span>{errorMessage || error}</span>
           </div>
         )}
 
@@ -285,20 +341,14 @@ export const Dashboard = () => {
             <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
             <span className="ml-2 text-gray-600">加载中...</span>
           </div>
-        ) : (
-          /* Task Grid */
-        filteredTasks.length === 0 ? (
+        ) : filteredTasks.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-gray-400 text-6xl mb-4">📋</div>
+            <div className="text-gray-300 text-6xl mb-4">📋</div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">暂无任务</h3>
             <p className="text-gray-600 mb-4">点击"新建任务"开始创建您的第一个任务</p>
             <button
-              onClick={() => {
-                setShowForm(true);
-                setEditingTask(undefined);
-                setAiAnalysis(null);
-              }}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2 rounded-lg hover:from-blue-600 hover:to-purple-700 flex items-center gap-2 mx-auto"
+              onClick={openCreateForm}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2 rounded-lg hover:from-blue-600 hover:to-purple-700 flex items-center gap-2 mx-auto transition-all shadow-sm hover:shadow"
             >
               <Plus className="h-5 w-5" />
               创建任务
@@ -315,7 +365,7 @@ export const Dashboard = () => {
               />
             ))}
           </div>
-        ))}
+        )}
       </main>
     </div>
   );
